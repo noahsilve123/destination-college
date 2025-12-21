@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /* Lightweight PDF text extractor using pdfjs-dist (Node)
-   Usage: node scripts/extract-pdf-js.js <path>
+  Usage: node scripts/extract-pdf-js.js <path>
 */
 const fs = require('fs')
 ;(async () => {
@@ -12,7 +13,7 @@ const fs = require('fs')
     const pdfjs = require('pdfjs-dist/legacy/build/pdf')
     const data = fs.readFileSync(path)
     // disable worker in Node environment (pdfjs supports single-threaded parsing)
-    try { pdfjs.GlobalWorkerOptions.disableWorker = true } catch (e) {}
+    try { pdfjs.GlobalWorkerOptions.disableWorker = true } catch {}
     const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data) })
     const pdf = await loadingTask.promise
     const maxPages = Math.min(pdf.numPages, 10)

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /* Run extractionRules.extractFieldsFromText on extracted PDF text and print JSON result */
 const fs = require('fs')
 require('ts-node/register/transpile-only')

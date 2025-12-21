@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertCircle, BadgeCheck, Loader2, Sparkles, Trash2, UploadCloud } from 'lucide-react'
 import { documentTypeOptions, type DocumentType, type ExtractedField } from '../lib/extractionRules'
 
@@ -31,6 +31,7 @@ type UploadedDoc = {
   rawText: string | null
 }
 
+
 type WorkerResult = { text: string; fields: ExtractedField[] }
 
 function formatBytes(size: number) {
@@ -48,22 +49,6 @@ export default function FAFSATool() {
   const [filterCategory, setFilterCategory] = useState<FieldCategory | 'All'>('All')
   const [scratchpad, setScratchpad] = useState('')
   const [aidFlags, setAidFlags] = useState({ business: false, home: false, nonCustodial: false, plan529: false })
-  const workerRef = useRef<Worker | null>(null)
-  const [workerError, setWorkerError] = useState<string | null>(null)
-
-  useEffect(() => {
-    try {
-      // Preferred: bundler-handled module worker
-      workerRef.current = new Worker(new URL('../workers/extractor.worker.ts', import.meta.url), { type: 'module' })
-    } catch (e) {
-      // If bundler doesn't support worker URL (dev environment like Turbopack), surface helpful error
-      console.error('Worker instantiation failed', e)
-      // avoid calling setState synchronously inside effect body
-      setTimeout(() => setWorkerError('Unable to start background extractor worker. Try restarting the dev server.'), 0)
-      workerRef.current = null
-    }
-    return () => workerRef.current?.terminate()
-  }, [])
 
   const safeId = useCallback((fileName: string) => `${Date.now()}-${fileName}`, [])
 
@@ -112,30 +97,24 @@ export default function FAFSATool() {
     setDocs((prev) => [...prev, ...newDocs])
   }, [safeId])
 
-  const analyzeWithWorker = useCallback(async (file: File, docType: DocumentType, onProgress?: (n: number | null) => void): Promise<WorkerResult> => {
-    const worker = workerRef.current
-    if (!worker) throw new Error(workerError ?? 'Extractor unavailable; please restart the dev server')
-    let handleMessage: (event: MessageEvent) => void
-    const promise = new Promise<WorkerResult>((resolve, reject) => {
-      handleMessage = (event: MessageEvent) => {
-        const data = event.data as
-          | { type: 'progress'; value?: number | null }
-          | { type: 'complete'; result: WorkerResult }
-          | { type: 'error'; error: string }
-        if (data.type === 'progress') {
-          onProgress?.(data.value ?? null)
-        } else if (data.type === 'complete') {
-          resolve(data.result)
-        } else if (data.type === 'error') {
-          reject(new Error(data.error))
-        }
-      }
-      worker.addEventListener('message', handleMessage)
-      worker.postMessage({ file, docType })
-    })
-    const cleanup = () => worker.removeEventListener('message', handleMessage)
-    return promise.finally(cleanup)
-  }, [workerError])
+  const analyzeWithService = useCallback(async (file: File, docType: DocumentType): Promise<WorkerResult> => {
+    const formData = new FormData()
+    formData.append('docType', docType)
+    formData.append('file', file)
+
+    const response = await fetch('/api/ai-extract', { method: 'POST', body: formData })
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      const message = payload?.message ?? 'Extraction service failed'
+      throw new Error(message)
+    }
+
+    const payload = await response.json() as { text?: string; fields?: ExtractedField[] }
+    return {
+      text: payload.text ?? '',
+      fields: payload.fields ?? [],
+    }
+  }, [])
 
   const onDrop = useCallback((e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files) }, [handleFiles])
   const onDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); if (!isDragging) setIsDragging(true) }, [isDragging])
@@ -147,16 +126,16 @@ export default function FAFSATool() {
   const analyzeDocument = useCallback(async (id: string) => {
     const target = docs.find((d) => d.id === id)
     if (!target?.file) return updateDoc(id, { analysisState: 'error', analysisError: 'File missing' })
-    updateDoc(id, { analysisState: 'analyzing', analysisError: undefined, analysisProgress: 0 })
+    updateDoc(id, { analysisState: 'analyzing', analysisError: undefined, analysisProgress: null })
     try {
-      const { fields, text } = await analyzeWithWorker(target.file, target.type, (p) => updateDoc(id, { analysisProgress: p }))
+      const { fields, text } = await analyzeWithService(target.file, target.type)
       const merged = mergeExtractions(fields)
       updateDoc(id, { analysisState: 'done', extractedFields: merged, analysisProgress: null, status: 'ready', rawText: text })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to analyze file'
       updateDoc(id, { analysisState: 'error', analysisError: message, analysisProgress: null })
     }
-  }, [docs, updateDoc, analyzeWithWorker])
+  }, [docs, updateDoc, analyzeWithService])
 
   const pendingCount = useMemo(() => docs.filter((d) => d.status === 'pending').length, [docs])
 

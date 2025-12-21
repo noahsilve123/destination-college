@@ -1,0 +1,23 @@
+{
+  "document": "C:\\Users\\nsilv\\OneDrive - University of Vermont\\Websites\\destination-college\\sample.pdf",
+  "doc_type": "1040",
+  "pages_processed": 1,
+  "ocr_pages": [
+    1
+  ],
+  "text_length": 14,
+  "ocr_enabled": true,
+  "fields": [],
+  "node_parser": {
+    "status": "ok"
+  },
+  "nlp_summary": {
+    "persons": [
+      "Dummy PDF"
+    ],
+    "dates": [],
+    "gpe": [],
+    "organizations": [],
+    "money": []
+  }
+}

@@ -32,8 +32,8 @@ export default function AIExtractClient() {
           const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf')
           // disable worker in browser to avoid worker-message conflicts in certain dev environments
           try {
-            pdfjsLib.GlobalWorkerOptions.disableWorker = true
-          } catch (e) {}
+            ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+          } catch {}
           const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
           const pdf = await loadingTask.promise
           const page = await pdf.getPage(1)
@@ -75,7 +75,7 @@ export default function AIExtractClient() {
         try {
           const PSM = (Tesseract && (Tesseract.PSM || (Tesseract.default && Tesseract.default.PSM)))
           if (PSM) await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-        } catch (e) {}
+        } catch {}
         resultPromise = worker.recognize(inputForOCR)
       } else {
         // fallback direct recognize
@@ -109,7 +109,7 @@ export default function AIExtractClient() {
       }
       try {
         if (workerRef.current) await workerRef.current.terminate()
-      } catch (_) {}
+      } catch {}
       workerRef.current = null
     } finally {
       setRunning(false)
@@ -150,7 +150,7 @@ export default function AIExtractClient() {
               abortRef.current.aborted = true
               setRunning(false)
               setError('OCR cancelled')
-              if (workerRef.current) { try { workerRef.current.terminate() } catch(_){} workerRef.current = null }
+              if (workerRef.current) { try { workerRef.current.terminate() } catch{} workerRef.current = null }
             }} className="text-xs text-red-600 underline">Cancel</button>
           </div>
         </div>

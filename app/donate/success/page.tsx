@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import Link from 'next/link'
 
 export default function SuccessPage(props: any) {
-  const sessionId = props?.searchParams?.session_id ?? ''
+  const sessionParam = props?.searchParams?.session_id
+  const sessionId = Array.isArray(sessionParam) ? sessionParam[0] : sessionParam ?? ''
   return (
     <main className="max-w-3xl mx-auto px-6 py-12">
       <h1 className="text-3xl font-bold">Thank you!</h1>

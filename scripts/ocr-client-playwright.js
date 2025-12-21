@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /* Automate the client OCR page using Playwright (runs in Node).
-   Steps:
-   - Assumes a dev server is available at http://localhost:3000
-   - Navigates to /ai-extract, uploads a PDF and waits for extracted text
-   - Prints the extracted text to stdout
+  Steps:
+  - Assumes a dev server is available at http://localhost:3000
+  - Navigates to /ai-extract, uploads a PDF and waits for extracted text
+  - Prints the extracted text to stdout
 */
 const fs = require('fs')
 ;(async () => {
@@ -40,12 +41,12 @@ const fs = require('fs')
       if (text && text.trim().length > 50) break
       await new Promise((r) => setTimeout(r, 1000))
     }
-  } catch (err) {
+  } catch {
     // try to read any visible error message
     try {
       const errEl = await page.$('.ai-extract-client .text-red-600')
       if (errEl) text = 'ERROR: ' + (await errEl.textContent())
-    } catch (_) {}
+    } catch {}
     // save debug artifacts
     try {
       await page.screenshot({ path: 'ocr-debug.png', fullPage: true })
