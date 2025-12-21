@@ -97,25 +97,6 @@ export default function FAFSATool() {
     setDocs((prev) => [...prev, ...newDocs])
   }, [safeId])
 
-  const analyzeWithService = useCallback(async (file: File, docType: DocumentType): Promise<WorkerResult> => {
-    const formData = new FormData()
-    formData.append('docType', docType)
-    formData.append('file', file)
-
-    const response = await fetch('/api/ai-extract', { method: 'POST', body: formData })
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null)
-      const message = payload?.message ?? 'Extraction service failed'
-      throw new Error(message)
-    }
-
-    const payload = await response.json() as { text?: string; fields?: ExtractedField[] }
-    return {
-      text: payload.text ?? '',
-      fields: payload.fields ?? [],
-    }
-  }, [])
-
   const onDrop = useCallback((e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files?.length) void handleFiles(e.dataTransfer.files) }, [handleFiles])
   const onDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); if (!isDragging) setIsDragging(true) }, [isDragging])
   const onDragLeave = useCallback((e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); setIsDragging(false) }, [])
@@ -126,16 +107,56 @@ export default function FAFSATool() {
   const analyzeDocument = useCallback(async (id: string) => {
     const target = docs.find((d) => d.id === id)
     if (!target?.file) return updateDoc(id, { analysisState: 'error', analysisError: 'File missing' })
-    updateDoc(id, { analysisState: 'analyzing', analysisError: undefined, analysisProgress: null })
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      return updateDoc(id, { analysisState: 'error', analysisError: 'Web workers are unavailable in this environment.' })
+    }
+
+    updateDoc(id, { analysisState: 'analyzing', analysisError: undefined, analysisProgress: 0 })
+
     try {
-      const { fields, text } = await analyzeWithService(target.file, target.type)
+      const { fields, text } = await new Promise<WorkerResult>((resolve, reject) => {
+        const worker = new Worker('/workers/extractor.worker.mjs', { type: 'module' })
+
+        const cleanup = () => {
+          worker.removeEventListener('message', handleMessage)
+          worker.removeEventListener('error', handleError)
+          worker.terminate()
+        }
+
+        const handleError = (event: ErrorEvent | Event) => {
+          cleanup()
+          if (event instanceof ErrorEvent && event.message) {
+            reject(new Error(event.message))
+          } else {
+            reject(new Error('Worker crashed during extraction'))
+          }
+        }
+
+        const handleMessage = (event: MessageEvent) => {
+          const data = event.data as { type?: string; value?: number; error?: string; result?: WorkerResult }
+          if (data?.type === 'progress') {
+            updateDoc(id, { analysisProgress: typeof data.value === 'number' ? data.value : null })
+          } else if (data?.type === 'complete' && data.result) {
+            cleanup()
+            resolve(data.result)
+          } else if (data?.type === 'error') {
+            cleanup()
+            reject(new Error(data.error ?? 'Worker reported an error'))
+          }
+        }
+
+        worker.addEventListener('message', handleMessage)
+        worker.addEventListener('error', handleError)
+        worker.postMessage({ file: target.file, docType: target.type })
+      })
+
       const merged = mergeExtractions(fields)
       updateDoc(id, { analysisState: 'done', extractedFields: merged, analysisProgress: null, status: 'ready', rawText: text })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to analyze file'
       updateDoc(id, { analysisState: 'error', analysisError: message, analysisProgress: null })
     }
-  }, [docs, updateDoc, analyzeWithService])
+  }, [docs, updateDoc])
 
   const pendingCount = useMemo(() => docs.filter((d) => d.status === 'pending').length, [docs])
 
@@ -220,6 +241,7 @@ export default function FAFSATool() {
         <div className="text-center">
           <p className="font-semibold">Drag & drop PDF copies of your tax docs</p>
           <p className="text-sm text-slate-500">IRS 1040, W-2s, income statements, Social Security letters</p>
+          <p className="text-xs text-slate-500 mt-1">Works with PDFs that have selectable text. Scanned images are not supported.</p>
         </div>
           <input
           id="financial-docs"

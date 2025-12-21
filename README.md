@@ -1,12 +1,11 @@
 ## Destination College FAFSA Helper
 
-This Next.js application powers the FAFSA prep and donation pages for Destination College. The FAFSA helper now relies on the standalone Go service in [`Financial-tools`](https://github.com/noahsilve123/Financial-tools) to do all document parsing and OCR.
+This Next.js application powers the FAFSA prep and scholarship planning pages for Destination College. The FAFSA helper now runs entirely in the browser using a Web Worker (PDF.js + Tesseract) to read PDFs and apply heuristic extraction rules. No external Go service or other backend is required for the main workflow.
 
 ## Prerequisites
 
 - Node.js 20+
-- Go extractor service running locally or deployed somewhere reachable
-- Environment variable `NEXT_PUBLIC_EXTRACTOR_URL` pointing at that service (e.g. `http://localhost:8080`)
+- (Optional) Python 3.11/3.10 with spaCy and Tesseract only if you want to run the CLI extraction script for debugging (see below).
 
 ## Local development
 
@@ -16,26 +15,15 @@ This Next.js application powers the FAFSA prep and donation pages for Destinatio
    npm install
    ```
 
-2. Start the FAFSA extractor backend (from the Financial-tools repo)
-
-   ```bash
-   cd ../Financial-tools
-   make run   # or go run .
-   ```
-
-3. Create an `.env.local` in this project with
-
-   ```env
-   NEXT_PUBLIC_EXTRACTOR_URL=http://localhost:8080
-   ```
-
-4. Back in this repo, run the frontend
+2. Run the frontend
 
    ```bash
    npm run dev
    ```
 
-Open [http://localhost:3000](http://localhost:3000) to use the site. Dropped PDFs/images will be uploaded to the extractor service and the text streamed back to the FAFSA helper UI.
+Open [http://localhost:3000](http://localhost:3000) to use the site. Dropped PDFs/images are parsed locally in the browser worker and never leave the tab.
+
+- `npm run build:worker` runs automatically before `dev`, `build`, or `start` thanks to the `pre*` scripts. Run it manually if you edit `app/workers/extractor.worker.ts` so the public bundle stays in sync.
 
 ## Optional reminder queue
 
@@ -47,14 +35,14 @@ Open [http://localhost:3000](http://localhost:3000) to use the site. Dropped PDF
 - A service worker (`public/sw.js`) caches the planner page for offline viewing. The manifest is served from `/manifest.webmanifest`.
 - Add `public/icon-192.png` and `public/icon-512.png` to improve the install prompt on mobile.
 
-## Testing the extractor connection
+## Testing the in-browser extractor
 
-- The FAFSA uploader expects a JSON payload `{ "text": "..." }`. You can hit the Go service manually with `curl -F "file=@samples/sample.pdf" $NEXT_PUBLIC_EXTRACTOR_URL/extract` to confirm it returns data before opening the Next.js UI.
-- If the spinner stays at 0 %, check the browser devtools network tab for any `/extract` errors. Missing or incorrect `NEXT_PUBLIC_EXTRACTOR_URL` is the most common issue.
+- Run `npm run dev` and drop a sample PDF into the FAFSA helper. Progress updates come from the worker thread.
+- If the spinner stays at 0 %, open the browser console. Worker errors are posted there and will also surface in the UI.
 
 ## Manual PDF extraction (pdfminer + pdfplumber)
 
-If you just need to dump text from a tax form for local testing (without starting the Go service or touching the browser), run the Python pipeline based on pdfplumber/pdfminer, Tesseract OCR, and the existing heuristic parser.
+If you just need to dump text from a tax form for local testing (without opening the browser), run the Python pipeline based on pdfplumber/pdfminer, Tesseract OCR, and the existing heuristic parser.
 
 1. Install the Python dependencies and the spaCy model that powers the NLP summary (use Python 3.11 or 3.10; spaCy/pydantic do not yet support 3.14):
 
@@ -82,40 +70,9 @@ If you just need to dump text from a tax form for local testing (without startin
 
 The pipeline prints progress when `--verbose` is set and logs which pages required OCR or when the Node helper fails.
 
-### Server-side extractor service
-
-The Next.js helper UI offloads PDF processing to a Python-backed service now. Uploads hit `POST /api/ai-extract`, which runs `scripts/extract-tax.py`, falls back to OCR when needed, and returns the same structured `fields` payload that the Fast heuristic parser uses in the browser.
-
-- Ensure Python 3.11/3.10 is installed and the dependencies are available (spaCy still requires `en_core_web_sm`):
-
-  ```bash
-  python -m pip install -r requirements.txt
-  python -m spacy download en_core_web_sm
-  ```
-
-- The API tries to invoke Python via `PYTHON_EXTRACTOR_BIN` (defaulting to `.venv311/Scripts/python.exe` on Windows or `.venv311/bin/python` on Unix before falling back to `python3`/`python`). Override it if your binary lives elsewhere:
-
-  ```bash
-  # PowerShell
-  $env:PYTHON_EXTRACTOR_BIN=.venv311\Scripts\python.exe
-
-  # macOS/Linux
-  export PYTHON_EXTRACTOR_BIN=.venv311/bin/python
-  ```
-
-- Start the Next.js dev server (`npm run dev`) once the Python environment is ready. The FAFSATool component now posts documents to `/api/ai-extract`, so the service must be able to find Tesseract and the spaCy model.
-
-## Deployment notes
-
-- The built-in `/api/ai-extract` route now runs `scripts/extract-tax.py`, so the frontend can send PDFs directly to the Python extractor. Make sure your deployment environment has Python 3.11+, Tesseract, and the spaCy model installed, and set `PYTHON_EXTRACTOR_BIN` if the interpreter lives outside PATH.
-- (Optional) You can still host the Go extractor from [`Financial-tools`](https://github.com/noahsilve123/Financial-tools) and point `NEXT_PUBLIC_EXTRACTOR_URL` at it; the frontend will continue to use that endpoint if it is configured.
-- The frontend is a standard Next.js 16 app so any platform that supports Next.js (Vercel, Netlify, Azure Static Web Apps) will work.
-
 ## Environment variables
 
-- `NEXT_PUBLIC_EXTRACTOR_URL` – URL to the FAFSA extractor service (required for document scanning).
 - `REDIS_URL` – enables reminder queue processing for `/api/reminders`.
-- `STRIPE_SECRET_KEY`, `STRIPE_DEFAULT_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` – Stripe donation flow (kept separate; untouched in this iteration).
 - `NEXT_PUBLIC_SITE_URL` – canonical site URL for building absolute links.
 
 ## Local development quickstart
@@ -152,8 +109,3 @@ npm run a11y              # pa11y-ci across primary pages
 
 - `public/sw.js` caches the planner page and assets for offline viewing.
 - `app/manifest.ts` defines icons/metadata; add `public/icon-192.png` and `public/icon-512.png` for install prompts.
-
-## Stripe setup (separate)
-
-- Donation checkout lives in `app/api/create-checkout-session/route.ts`; it requires `STRIPE_SECRET_KEY` and optional `STRIPE_DEFAULT_PRICE_ID` for monthly plans.
-- Webhooks use `STRIPE_WEBHOOK_SECRET` and append to `data/donations.json` for admin views.

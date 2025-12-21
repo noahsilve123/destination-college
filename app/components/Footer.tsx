@@ -4,13 +4,11 @@ const quickLinks = [
   { label: 'Programs', href: '/programs' },
   { label: 'Resources', href: '/resources' },
   { label: 'About', href: '/about' },
-  { label: 'Donate', href: '/donate' },
 ]
 
 const supportLinks = [
   { label: 'Refer a student', href: '/programs#mentorship' },
   { label: 'Volunteer', href: '/about#involved' },
-  { label: 'Corporate giving', href: '/donate' },
 ]
 
 export default function Footer() {

@@ -68,12 +68,6 @@ export default function Header() {
             <Link href="/network" className="nav-link hover:opacity-90">
               Network
             </Link>
-            <Link
-              href="/donate"
-              className="ml-2 btn-crimson inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            >
-              Donate
-            </Link>
           </nav>
 
           <div className="md:hidden">
@@ -113,13 +107,6 @@ export default function Header() {
               </Link>
               <Link href="/network" onClick={() => setMenuOpen(false)} className="text-lg nav-link">
                 Network
-              </Link>
-              <Link
-                href="/donate"
-                onClick={() => setMenuOpen(false)}
-                className="mt-4 btn-crimson inline-flex items-center justify-center rounded-full px-4 py-2 text-white"
-              >
-                Donate
               </Link>
             </nav>
           </aside>
